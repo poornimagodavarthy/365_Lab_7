@@ -3,9 +3,9 @@ import mysql.connector
 
 def connect_to_database():
     db_password = getpass.getpass("Enter the database password: ")
-    conn = mysql.connector.connect(user='hasty', password=db_password,
+    conn = mysql.connector.connect(user='pgodavar', password=db_password,
                                 host='mysql.labthreesixfive.com',
-                                database='amigler')
+                                database='pgodavar')
     return conn
 
 def get_rooms():
@@ -22,7 +22,11 @@ def revenue():
     pass
 
 def main():
-    pass
+    conn = connect_to_database()
+    if conn is None:
+        print("Database didn't connect")
+    else:
+        print("Yay it connected!")
 
 if __name__ == "__main__":
     main()
