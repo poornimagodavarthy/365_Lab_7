@@ -8,25 +8,59 @@ def connect_to_database():
                                 database='pgodavar')
     return conn
 
-def get_rooms():
+def get_rooms(conn):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM lab7_rooms")
+    result = cursor.fetchall()
+    print(result)
+
+
+def make_reservation(conn):
     pass
 
-def make_reservation():
+def cancel_reservation(conn):
+    pass
+def search_reservation(conn):
     pass
 
-def cancel_reservation():
-    pass
-def search_reservation():
-    pass
-def revenue():
+def show_revenue(conn):
     pass
 
 def main():
     conn = connect_to_database()
     if conn is None:
-        print("Database didn't connect")
+        print("Database didn't connect\n")
     else:
-        print("Yay it connected!")
+        print("Yay it connected!\n")
+
+    
+
+    while True:
+        print("1. View rooms and rates\n")
+        print("2. Make a reservation\n")
+        print("3. Cancel Reservation\n")
+        print("4. Search reservations\n")
+        print("5. Revenue overview\n")
+        print("6. Exit\n")
+
+        choice = input("Select an option: ")
+
+        if choice == "1":
+            get_rooms(conn)
+        elif choice == 2:
+            make_reservation(conn)
+        elif choice == 3:
+            cancel_reservation(conn)
+        elif choice == 4: 
+            search_reservation(conn)
+        elif choice == "5":
+                show_revenue(conn)
+        elif choice == "6":
+            print("byee!")
+            break
+        else:
+            print("Invalid choice. Please try again.")
+            break
 
 if __name__ == "__main__":
     main()
