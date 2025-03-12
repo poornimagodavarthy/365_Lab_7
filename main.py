@@ -4,8 +4,8 @@ from datetime import datetime
 
 
 def connect_to_database():
-    #db_password = getpass.getpass("Enter the database password: ")
-    conn = mysql.connector.connect(user='pgodavar', password='Wtr25_365_028373715',
+    db_password = getpass.getpass("Enter the database password: ")
+    conn = mysql.connector.connect(user='aramchan', password=db_password,
                                 host='mysql.labthreesixfive.com',
                                 database='aramchan')
     return conn
@@ -79,7 +79,7 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
     result = cursor.fetchall()
     return result
 
-def cancel_reservation(conn):
+def cancel_reservation(conn, code):
     pass
 def search_reservation(conn):
     pass
@@ -118,7 +118,8 @@ def main():
             res = make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, enddate, num_children, num_adults)
             print(res)
         elif choice == 3:
-            cancel_reservation(conn)
+            code = input("Enter your reservation code: ")
+            cancel_reservation(conn, code)
         elif choice == 4: 
             search_reservation(conn)
         elif choice == "5":
@@ -129,6 +130,6 @@ def main():
         else:
             print("Invalid choice. Please try again.")
             break
-cancel_reservation
+#cancel_reservation
 if __name__ == "__main__":
     main()
