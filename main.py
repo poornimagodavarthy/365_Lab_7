@@ -15,8 +15,11 @@ def get_rooms(conn):
     print(result)
 
 
-def make_reservation(conn):
-    pass
+def make_reservation(conn, firstname, lastname, roomcode, begindate, enddate, num_children, num_adults):
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM lab7_rooms")
+    result = cursor.fetchall()
+    print(result)
 
 def cancel_reservation(conn):
     pass
@@ -33,8 +36,6 @@ def main():
     else:
         print("Yay it connected!\n")
 
-    
-
     while True:
         print("1. View rooms and rates\n")
         print("2. Make a reservation\n")
@@ -47,8 +48,15 @@ def main():
 
         if choice == "1":
             get_rooms(conn)
-        elif choice == 2:
-            make_reservation(conn)
+        elif choice == "2":
+            firstname = input("FirstName: ")
+            lastname = input("LastName: ")
+            roomcode = input("Room code or Any: ")
+            begindate = input("Begin Date: ")
+            enddate = input("End Date: ")
+            num_children = input("Number of Children: ")
+            num_adults = input("Number of Adults: ")
+            make_reservation(conn, firstname, lastname, roomcode, begindate, enddate, num_children, num_adults)
         elif choice == 3:
             cancel_reservation(conn)
         elif choice == 4: 
