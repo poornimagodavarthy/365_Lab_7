@@ -3,16 +3,50 @@ import mysql.connector
 
 def connect_to_database():
     db_password = getpass.getpass("Enter the database password: ")
-    conn = mysql.connector.connect(user='pgodavar', password=db_password,
+    conn = mysql.connector.connect(user='aramchan', password=db_password,
                                 host='mysql.labthreesixfive.com',
-                                database='pgodavar')
+                                database='aramchan')
     return conn
 
 def get_rooms(conn):
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM lab7_rooms")
+    cursor.execute("""
+         with last180Days as (
+             select Room, 
+                    SUM(DATEDIFF(LEAST(CheckOut, CURDATE()), GREATEST(CheckIn, DATE_SUB(CURDATE(), INTERVAL 180 DAY)))) AS occupiedDays
+             from lab7_reservations
+             where LEAST(CheckOut, CURDATE()) > GREATEST(CheckIn, DATE_SUB(CURDATE(), INTERVAL 180 DAY))
+             group by Room
+             ),
+         availableCheckInDays as (
+             select Room, MIN(CheckOut) as nextAvailableCheckIn
+             from lab7_reservations
+             where CheckOut > CURDATE()
+             group by Room
+             ),
+         mostRecentStays as (
+             select r1.Room, r1.CheckOut as mostRecent, DATEDIFF(r1.CheckOut, r1.CheckIn) as lengthOfStay
+             from lab7_reservations as r1
+             where r1.CheckOut = (
+                 select MAX(r2.CheckOut)
+                 from lab7_reservations as r2
+                    where r2.Room = r1.Room and r2.CheckOut < CURDATE()
+                 )
+             )
+         select RoomName, 
+                 COALESCE(ROUND(l.occupiedDays/180, 2), 0) as popularity, 
+                 COALESCE(a.nextAvailableCheckIn, 'No future bookings'), 
+                 COALESCE (m.lengthOfStay, 0) as lengthOfStay,
+                 COALESCE (m.mostRecent, 'No past stays') as mostRecent
+            from lab7_rooms as r
+                left join last180Days as l on l.Room = r.RoomCode
+                left join availableCheckInDays as a on a.Room = r.RoomCode
+                left join mostRecentStays as m on m.Room = r.RoomCode
+            order by popularity DESC
+                   """)
     result = cursor.fetchall()
-    print(result)
+    for row in result:
+        print (f"Room: {row[0]}, Popularity: {row[1]}, Next Available Check-in: {row[2]}, Most Recent Stay: {row[3]} days, Check-out Date: {row[4]}")
 
 
 def make_reservation(conn):
