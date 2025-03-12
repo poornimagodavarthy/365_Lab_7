@@ -1,9 +1,11 @@
 import getpass
 import mysql.connector
+from datetime import datetime
+
 
 def connect_to_database():
-    db_password = getpass.getpass("Enter the database password: ")
-    conn = mysql.connector.connect(user='aramchan', password=db_password,
+    #db_password = getpass.getpass("Enter the database password: ")
+    conn = mysql.connector.connect(user='pgodavar', password='Wtr25_365_028373715',
                                 host='mysql.labthreesixfive.com',
                                 database='aramchan')
     return conn
@@ -49,8 +51,33 @@ def get_rooms(conn):
         print (f"Room: {row[0]}, Popularity: {row[1]}, Next Available Check-in: {row[2]}, Most Recent Stay: {row[3]} days, Check-out Date: {row[4]}")
 
 
-def make_reservation(conn):
-    pass
+def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, enddate, num_children, num_adults):
+    cursor = conn.cursor()
+    # check room availability with a query
+        # if Any, show *
+    # display available rooms
+        # roomcode, room name, num beds, price
+    # calc total price
+    # insert into lab_7_reservations
+    roomcode, bedtype = str(roomcode), str(bedtype)
+    begindate = datetime.strptime(begindate, "%Y-%m-%d")
+    enddate = datetime.strptime(enddate, "%Y-%m-%d")
+    if roomcode == "Any" and bedtype == "Any":
+        query = f"""
+        SELECT * 
+        FROM lab7_reservations 
+        JOIN lab7_rooms ON lab7_rooms.RoomCode = lab7_reservations.Room
+        WHERE Room = '{roomcode}' AND bedType = '{bedtype}'
+        """
+    else:
+        query = """
+        SELECT RoomCode, RoomName, BedType, maxOcc, basePrice
+        FROM lab7_reservations 
+        JOIN lab7_rooms ON lab7_rooms.RoomCode = lab7_reservations.Room
+        """
+    cursor.execute(query)
+    result = cursor.fetchall()
+    return result
 
 def cancel_reservation(conn):
     pass
@@ -67,8 +94,6 @@ def main():
     else:
         print("Yay it connected!\n")
 
-    
-
     while True:
         print("1. View rooms and rates\n")
         print("2. Make a reservation\n")
@@ -81,8 +106,17 @@ def main():
 
         if choice == "1":
             get_rooms(conn)
-        elif choice == 2:
-            make_reservation(conn)
+        elif choice == "2":
+            firstname = input("FirstName: ")
+            lastname = input("LastName: ")
+            roomcode = input("Room code or Any: ")
+            bedtype = input("Bed Type: ")
+            begindate = input("Begin Date: ")
+            enddate = input("End Date: ")
+            num_children = input("Number of Children: ")
+            num_adults = input("Number of Adults: ")
+            res = make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, enddate, num_children, num_adults)
+            print(res)
         elif choice == 3:
             cancel_reservation(conn)
         elif choice == 4: 
@@ -95,6 +129,6 @@ def main():
         else:
             print("Invalid choice. Please try again.")
             break
-
+cancel_reservation
 if __name__ == "__main__":
     main()
