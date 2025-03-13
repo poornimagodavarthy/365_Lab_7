@@ -80,7 +80,20 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
     return result
 
 def cancel_reservation(conn, code):
-    pass
+    cursor = conn.cursor()
+    code = str(code)
+    confirmation = input("Are you sure you want to cancel your reservation? Type Y to confirm, N to go back")
+    if confirmation == "Y":
+        cursor.execute(""""
+        delete from lab7_reservations
+        where CODE = '{code}'
+         """)
+    elif confirmation == "N":
+        return
+    else:
+        print("Invalid option, please try again")
+        return
+    
 def search_reservation(conn):
     pass
 
