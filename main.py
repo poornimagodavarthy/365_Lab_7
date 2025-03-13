@@ -7,10 +7,10 @@ from datetime import datetime, timedelta
 
 
 def connect_to_database():
-    db_password = getpass.getpass("Enter the database password: ")
-    conn = mysql.connector.connect(user='aramchan', password=db_password,
+    #db_password = getpass.getpass("Enter the database password: ")
+    conn = mysql.connector.connect(user='pgodavar', password='Wtr25_365_028373715',
                                 host='mysql.labthreesixfive.com',
-                                database='aramchan')
+                                database='pgodavar')
     return conn
 
 def get_rooms(conn):
@@ -277,7 +277,50 @@ def is_valid_date(date):
         return False
 
 def show_revenue(conn):
-    pass
+    cursor = conn.cursor()
+    #revenue per night for each reservation
+    # query = f"""
+    #     SELECT 
+    #         r.RoomCode,
+    #         g.date,
+    #         CASE 
+    #             WHEN WEEKDAY(g.date) IN (5,6) THEN r.BasePrice * 1.10  
+    #             ELSE r.BasePrice
+    #         END AS revenue
+    #     FROM lab7_reservations res
+    #     JOIN (
+    #         SELECT DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-01-01'), INTERVAL numbers.n DAY) AS date
+    #         FROM (
+    #             SELECT ones.n + tens.n + hundreds.n AS n
+    #             FROM 
+    #                 (SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+    #                 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) AS ones
+    #             JOIN 
+    #                 (SELECT 0 AS n UNION ALL SELECT 10 UNION ALL SELECT 20 UNION ALL SELECT 30 UNION ALL SELECT 40
+    #                 UNION ALL SELECT 50 UNION ALL SELECT 60 UNION ALL SELECT 70 UNION ALL SELECT 80 UNION ALL SELECT 90) AS tens
+    #                 ON 1=1  
+    #             JOIN 
+    #                 (SELECT 0 AS n UNION ALL SELECT 100 UNION ALL SELECT 200 UNION ALL SELECT 300) AS hundreds
+    #                 ON 1=1  
+    #         ) AS numbers
+    #         WHERE DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-01-01'), INTERVAL numbers.n DAY) <= DATE_FORMAT(CURRENT_DATE, '%Y-12-31')
+    #     ) g ON g.date >= res.CheckIn AND g.date < res.CheckOut
+    #     JOIN lab7_rooms r ON res.Room = r.RoomCode;
+    #     """
+    # result = cursor.fetchall(query)
+    # return result
+
+    cursor.execute(""" 
+        with monthlyRevenue as (
+                   r.RoomName, 
+                   MONTHNAME(res.CheckIn) as month_name,
+                   CASE 
+                    WHEN WEEKDAY(g.date) IN (5,6) THEN r.BasePrice * 1.10  
+                    ELSE r.BasePrice
+                    END AS revenue
+                   )
+    """)
+
 def main():
     conn = connect_to_database()
     if conn is None:
