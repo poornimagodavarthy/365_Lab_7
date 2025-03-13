@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 def connect_to_database():
     db_password = getpass.getpass("Enter the database password: ")
     conn = mysql.connector.connect(user='aramchan', password=db_password,
+                                host='mysql.labthreesixfive.com',
                                 database='aramchan')
     return conn
 
@@ -204,7 +205,7 @@ def cancel_reservation(conn, code):
     cursor = conn.cursor()
     cursor.execute(""" 
         select * from lab7_reservations where CODE = %s
-        """, (code,))
+        """, [code])
     result = cursor.fetchone()
     if not result:
         print ("No reservations exist with that code")
@@ -215,7 +216,7 @@ def cancel_reservation(conn, code):
             cursor.execute("""
             delete from lab7_reservations
             where CODE = %s
-            """, (code,))
+            """, [code])
             conn.commit()
             print("Reservation canceled successfully.")
         except mysql.connector.Error as e:
