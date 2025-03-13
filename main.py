@@ -4,8 +4,6 @@ from datetime import datetime
 from datetime import datetime, timedelta
 
 # PARAMETRIZE EVERYTHINGG
-
-
 def connect_to_database():
     #db_password = getpass.getpass("Enter the database password: ")
     conn = mysql.connector.connect(user='pgodavar', password='Wtr25_365_028373715',
@@ -159,14 +157,16 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
                    """
     cursor.execute(all_rooms)
     all_room_vals = cursor.fetchall()
-    print("VALUES: ", all_room_vals)
-    rate = all_room_vals[0][5]
+    
     if not all_room_vals:
         suggested_rooms = suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupancy)
-        chosen_option = present_suggestions(suggested_rooms)
-    #DISPLAY RESULTS PROPERLY
+        selected_room = present_suggestions(suggested_rooms)
+        print("SELECTED: \n", selected_room)
+        # output: ('AOB', 'Abscond or bolster', 2, 'Queen', 4, Decimal('175.00'), 'traditional', Decimal('525.00'), Decimal('0.58'), '2025-03-15', 2, '2025-03-09', 4)
+        roomcode, bedtype, begindate, enddate, rate = selected_room[0], selected_room[3], datetime.strptime(selected_room[9], "%Y-%m-%d"), datetime.strptime(selected_room[11], "%Y-%m-%d"), selected_room[7]
+    else:
+        rate = all_room_vals[0][5]
     total_price = compute_total_price(begindate, enddate, rate)
-    roomcode, bedtype, begindate, enddate, rate = chosen_option
 
     print(total_price)
     
@@ -182,6 +182,31 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
         """
     cursor.execute(insert)
     conn.commit()
+    # PRINT CONFIRMATION
+    confirmation_query = """
+    SELECT CODE, Room, CheckIn, CheckOut, Rate, LastName, FirstName, Adults, Kids, RoomName
+    FROM lab7_reservations 
+    JOIN lab7_rooms ON Room = RoomCode
+    WHERE CODE = %s
+    """
+    cursor.execute(confirmation_query, (new_code,))
+    reservation_details = cursor.fetchone()
+
+    if reservation_details:
+        print("\nReservation Confirmed!")
+        print("-" * 50)
+        print(f"Reservation Code: {reservation_details[0]}")
+        print(f"Guest Name: {reservation_details[6]} {reservation_details[5]}")
+        print(f"Room: {reservation_details[1]} - {reservation_details[9]}")
+        print(f"Check-in Date: {reservation_details[2]}")
+        print(f"Check-out Date: {reservation_details[3]}")
+        print(f"Rate per Night: ${reservation_details[4]:.2f}")
+        print(f"Total Guests: {reservation_details[7]} Adults, {reservation_details[8]} Children")
+        print("-" * 50)
+        print("Thank you for booking with us!")
+
+    
+    
 
 def suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupancy):
     cursor = conn.cursor()
@@ -223,7 +248,7 @@ def suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupan
                     left join mostRecentStays as m on m.Room = r.RoomCode
                 WHERE nextAvailableCheckIn <= '{begindate}'
                 AND r.maxOcc >= {maxOccupancy}
-                AND (r.RoomCode != '{roomcode}') AND (r.BedType = '{bedtype}' OR '{bedtype}' = 'Any')
+                AND (r.RoomCode != '{roomcode}') 
                 AND NOT EXISTS (
                     SELECT 1
                     FROM lab7_reservations r2
@@ -240,8 +265,21 @@ def suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupan
     return result
 
 def present_suggestions(suggested_rooms):
-    pass
-
+    print("We couldn't find exact matches. Would you be interested in any of these other rooms? \n")
+    for i, room in enumerate(suggested_rooms, 1):
+        print(f"{i}. Room: {room[1]} | Beds: {room[2]} | Bed Type: {room[3]} | Max Occupancy: {room[4]} | Price: {room[5]} | Decor: {room[6]} | Available From: {room[8]} | Most Recent Stay: {room[9]}, \n")
+    try: 
+        option = int(input("Please select a room number (1-5): "))
+        if option <1 or option > 5:
+            print("Invalid selection, try again")
+            return None
+        selected_room = suggested_rooms[option -1]
+        print("CHOSEN: ", selected_room)
+        return selected_room
+    except ValueError:
+        print("Invalid input, please enter a number")
+        return None
+        
 def compute_total_price(begindate, enddate, base_rate):
     total_cost = 0
     current_date = begindate
@@ -378,7 +416,8 @@ def main():
         print("Database didn't connect\n")
     else:
         print("Yay it connected!\n")
-    print(suggest_alternatives(conn, 'AUB', 'Queen', '2025-05-05', '2025-05-08', 1))
+
+    make_reservation(conn, 'jane', 'doe', 'HBB', 'Queen', '2025-05-05', '2025-05-08', 3, 1)
 '''
     while True:
         print("1. View rooms and rates\n")
