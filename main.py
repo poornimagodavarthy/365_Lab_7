@@ -267,6 +267,7 @@ def search_reservation(conn, firstname, lastname, startdate, enddate, roomcode, 
     result = cursor.fetchall()
     for row in result:
         print (f"CODE: {row[0]}, Room: {row[1]}, Check-in: {row[2]}, CheckOut: {row[3]}, Rate: {row[4]}, Last Name: {row[5]}, FirstName: {row[6]}, Adults: {row[7]}, Kids: {row[8]}, Room Name: {row[9]}")
+    cursor.close()
 
 def is_valid_date(date):
     try:
@@ -277,7 +278,6 @@ def is_valid_date(date):
 
 def show_revenue(conn):
     pass
-
 def main():
     conn = connect_to_database()
     if conn is None:
