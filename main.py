@@ -7,10 +7,9 @@ from datetime import datetime, timedelta
 
 
 def connect_to_database():
-    #db_password = getpass.getpass("Enter the database password: ")
-    conn = mysql.connector.connect(user='pgodavar', password='Wtr25_365_028373715',
-                                host='mysql.labthreesixfive.com',
-                                database='pgodavar')
+    db_password = getpass.getpass("Enter the database password: ")
+    conn = mysql.connector.connect(user='aramchan', password=db_password,
+                                database='aramchan')
     return conn
 
 def get_rooms(conn):
@@ -203,14 +202,27 @@ def generate_code(conn):
 
 def cancel_reservation(conn, code):
     cursor = conn.cursor()
-    code = str(code)
-    confirmation = input("Are you sure you want to cancel your reservation? Type Y to confirm, N to go back")
-    if confirmation == "Y":
-        cursor.execute(""""
-        delete from lab7_reservations
-        where CODE = '{code}'
-         """)
+    cursor.execute(""" 
+        select * from lab7_reservations where CODE = %s
+        """, (code,))
+    result = cursor.fetchone()
+    if not result:
+        print ("No reservations exist with that code")
+        return
+    confirmation = input("Are you sure you want to cancel your reservation? Type Y to confirm, N to go back\n")
+    if confirmation.upper() == "Y":
+        try:
+            cursor.execute("""
+            delete from lab7_reservations
+            where CODE = %s
+            """, (code,))
+            conn.commit()
+            print("Reservation canceled successfully.")
+        except mysql.connector.Error as e:
+            print(f"Error: {e}")
+            conn.rollback()
     elif confirmation == "N":
+        print("Cancellation terminated.")
         return
     else:
         print("Invalid option, please try again")
@@ -252,10 +264,10 @@ def main():
             num_adults = input("Number of Adults: ")
             res = make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, enddate, num_children, num_adults)
             #print(res)
-        elif choice == 3:
+        elif choice == "3":
             code = input("Enter your reservation code: ")
             cancel_reservation(conn, code)
-        elif choice == 4: 
+        elif choice == "4": 
             search_reservation(conn)
         elif choice == "5":
                 show_revenue(conn)
