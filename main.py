@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 
 
 def connect_to_database():
-    #db_password = getpass.getpass("Enter the database password: ")
-    conn = mysql.connector.connect(user='aramchan', password='Wtr25_365_028249474',
+    db_password = getpass.getpass("Enter the database password: ")
+    conn = mysql.connector.connect(user='aramchan', password=db_password,
                                 host='mysql.labthreesixfive.com',
                                 database='aramchan')
     return conn
