@@ -7,8 +7,8 @@ from datetime import datetime, timedelta
 
 
 def connect_to_database():
-    db_password = getpass.getpass("Enter the database password: ")
-    conn = mysql.connector.connect(user='aramchan', password=db_password,
+    #db_password = getpass.getpass("Enter the database password: ")
+    conn = mysql.connector.connect(user='aramchan', password='Wtr25_365_028249474',
                                 host='mysql.labthreesixfive.com',
                                 database='aramchan')
     return conn
@@ -38,7 +38,7 @@ def get_rooms(conn):
                     where r2.Room = r1.Room and r2.CheckOut < CURDATE()
                  )
              )
-         select RoomName, 
+         select RoomCode, RoomName, Beds, bedType, maxOcc, basePrice, decor,
                  COALESCE(ROUND(l.occupiedDays/180, 2), 0) as popularity, 
                  COALESCE(a.nextAvailableCheckIn, 'No future bookings'), 
                  COALESCE (m.lengthOfStay, 0) as lengthOfStay,
@@ -51,7 +51,7 @@ def get_rooms(conn):
                    """)
     result = cursor.fetchall()
     for row in result:
-        print (f"Room: {row[0]}, Popularity: {row[1]}, Next Available Check-in: {row[2]}, Most Recent Stay: {row[3]} days, Check-out Date: {row[4]}")
+        print (f"Room: {row[0]}, Room Name: {row[1]}, Beds: {row[2]}, Bed Type: {row[3]}, Max Occ: {row[4]}, Base Price: {row[5]}, Decor: {row[6]}, Popularity: {row[7]}, Next Available Check-in: {row[8]}, Most Recent Stay: {row[9]} days, Check-out Date: {row[10]}")
 
 
 def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, enddate, num_children, num_adults):
@@ -222,6 +222,8 @@ def cancel_reservation(conn, code):
         except mysql.connector.Error as e:
             print(f"Error: {e}")
             conn.rollback()
+        finally: 
+            cursor.close()
     elif confirmation == "N":
         print("Cancellation terminated.")
         return
@@ -229,8 +231,49 @@ def cancel_reservation(conn, code):
         print("Invalid option, please try again")
         return
     
-def search_reservation(conn):
-    pass
+def search_reservation(conn, firstname, lastname, startdate, enddate, roomcode, rsvcode):
+    cursor = conn.cursor()
+    conditions = []
+    sub_values = []
+ 
+    if firstname:
+        conditions.append("FirstName LIKE %s")
+        sub_values.append(firstname + "%")
+    if lastname:
+        conditions.append("LastName LIKE %s")
+        sub_values.append(lastname + "%")
+    if roomcode:
+        conditions.append("Room LIKE %s")
+        sub_values.append(roomcode + "%")
+    if rsvcode:
+        conditions.append("CODE = %s")
+        sub_values.append(rsvcode)
+    if startdate and enddate:
+        conditions.append("CheckIn < %s AND CheckOut > %s")
+        sub_values.append(startdate)
+        sub_values.append(enddate)
+    elif startdate:
+        conditions.append("CheckIn <= %s")
+        sub_values.append(startdate)
+    elif enddate:
+        conditions.append("CheckOut >= %s")
+        sub_values.append(enddate)
+
+    query = "select CODE, Room, CheckIn, CheckOut, Rate, LastName, FirstName, Adults, Kids, RoomName from lab7_reservations join lab7_rooms on Room = RoomCode"
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    
+    cursor.execute(query, sub_values)
+    result = cursor.fetchall()
+    for row in result:
+        print (f"CODE: {row[0]}, Room: {row[1]}, Check-in: {row[2]}, CheckOut: {row[3]}, Rate: {row[4]}, Last Name: {row[5]}, FirstName: {row[6]}, Adults: {row[7]}, Kids: {row[8]}, Room Name: {row[9]}")
+
+def is_valid_date(date):
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+        return True
+    except ValueError:
+        return False
 
 def show_revenue(conn):
     pass
@@ -269,7 +312,22 @@ def main():
             code = input("Enter your reservation code: ")
             cancel_reservation(conn, code)
         elif choice == "4": 
-            search_reservation(conn)
+            firstname = input("FirstName: ")
+            lastname = input("LastName: ")
+            startdate = input("Begin Date: ")
+            if not (startdate == "" or is_valid_date(startdate)):
+                print ("Please enter a valid date, try again")
+                startdate = input("Begin Date: ")
+            enddate = input("End Date: ")
+            if not (enddate == "" or is_valid_date(enddate)):
+                print ("Please enter a valid date, try again")
+                enddate = input("End Date: ")
+            roomcode = input(" Room Code: ")
+            rsvcode = input("Reservation Code: ")
+            if (len(rsvcode) < 5 and len(rsvcode) != 0):
+                print ("Please enter the full reservation code, try again")
+                rsvcode = input("Reservation Code: ")
+            search_reservation(conn, firstname, lastname, startdate, enddate, roomcode, rsvcode)
         elif choice == "5":
                 show_revenue(conn)
         elif choice == "6":
