@@ -161,8 +161,13 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
     all_room_vals = cursor.fetchall()
     print("VALUES: ", all_room_vals)
     rate = all_room_vals[0][5]
-
+    if not all_room_vals:
+        suggested_rooms = suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupancy)
+        chosen_option = present_suggestions(suggested_rooms)
+    #DISPLAY RESULTS PROPERLY
     total_price = compute_total_price(begindate, enddate, rate)
+    roomcode, bedtype, begindate, enddate, rate = chosen_option
+
     print(total_price)
     
     new_code = generate_code(conn)
@@ -178,6 +183,64 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
     cursor.execute(insert)
     conn.commit()
 
+def suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupancy):
+    cursor = conn.cursor()
+    #logic: rank on lower price, higher popularity, higher max occupancy
+    query = f"""
+    with last180Days as (
+             select Room, 
+                    SUM(DATEDIFF(LEAST(CheckOut, CURDATE()), GREATEST(CheckIn, DATE_SUB(CURDATE(), INTERVAL 180 DAY)))) AS occupiedDays
+             from lab7_reservations
+             where LEAST(CheckOut, CURDATE()) > GREATEST(CheckIn, DATE_SUB(CURDATE(), INTERVAL 180 DAY))
+             group by Room
+             ),
+         availableCheckInDays as (
+             select Room, MIN(CheckOut) as nextAvailableCheckIn
+             from lab7_reservations
+             where CheckOut >= CURDATE()
+             group by Room
+             ),
+         mostRecentStays as (
+             select r1.Room, r1.CheckOut as mostRecent, DATEDIFF(r1.CheckOut, r1.CheckIn) as lengthOfStay
+             from lab7_reservations as r1
+             where r1.CheckOut = (
+                 select MAX(r2.CheckOut)
+                 from lab7_reservations as r2
+                    where r2.Room = r1.Room and r2.CheckOut < CURDATE() 
+                 )
+             ),
+             ranked_rooms AS (
+                select RoomCode, RoomName, Beds, bedType, maxOcc, basePrice, decor, 
+                        (r.basePrice * (DATEDIFF('{enddate}','{begindate}'))) AS TotalPrice,
+                        COALESCE(ROUND(l.occupiedDays/180, 2), 0) as popularity, 
+                        COALESCE(a.nextAvailableCheckIn, 'No future bookings') AS nextAvailableCheckIn, 
+                        COALESCE (m.lengthOfStay, 0) as lengthOfStay,
+                        COALESCE (m.mostRecent, 'No past stays') as mostRecent,
+                        ROW_NUMBER() OVER (ORDER BY r.basePrice ASC, l.occupiedDays DESC, r.maxOcc DESC) AS row_rank
+                FROM lab7_rooms as r
+                    left join last180Days as l on l.Room = r.RoomCode
+                    left join availableCheckInDays as a on a.Room = r.RoomCode
+                    left join mostRecentStays as m on m.Room = r.RoomCode
+                WHERE nextAvailableCheckIn <= '{begindate}'
+                AND r.maxOcc >= {maxOccupancy}
+                AND (r.RoomCode != '{roomcode}') AND (r.BedType = '{bedtype}' OR '{bedtype}' = 'Any')
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM lab7_reservations r2
+                    WHERE r2.CheckIn > '{begindate}' AND r2.CheckOut < '{enddate}'
+                )
+                )
+            SELECT * FROM ranked_rooms
+            WHERE row_rank <=5
+            order by popularity DESC;
+    """
+    
+    cursor.execute(query)
+    result = cursor.fetchall()
+    return result
+
+def present_suggestions(suggested_rooms):
+    pass
 
 def compute_total_price(begindate, enddate, base_rate):
     total_cost = 0
@@ -315,7 +378,8 @@ def main():
         print("Database didn't connect\n")
     else:
         print("Yay it connected!\n")
-
+    print(suggest_alternatives(conn, 'AUB', 'Queen', '2025-05-05', '2025-05-08', 1))
+'''
     while True:
         print("1. View rooms and rates\n")
         print("2. Make a reservation\n")
@@ -367,6 +431,8 @@ def main():
         else:
             print("Invalid choice. Please try again.")
             break
+            '''
+
 #cancel_reservation
 if __name__ == "__main__":
     main()
