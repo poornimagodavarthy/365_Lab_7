@@ -54,13 +54,10 @@ def get_rooms(conn):
 
 def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, enddate, num_children, num_adults):
     cursor = conn.cursor()
-    # TO DO
-        # no matches = suggest 5
+    # TO DO:
         # notify if exceeds maxOcc
-        # present numbered list of available rooms
         # error check: if ONE is Any not both
         # option to cancel 
-        # booking confirmation screen
     roomcode, bedtype, firstname = str(roomcode), str(bedtype), str(firstname)
     begindate = datetime.strptime(begindate, "%Y-%m-%d")
     enddate = datetime.strptime(enddate, "%Y-%m-%d")
