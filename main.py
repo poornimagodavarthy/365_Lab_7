@@ -56,16 +56,13 @@ def get_rooms(conn):
 
 def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, enddate, num_children, num_adults):
     cursor = conn.cursor()
-    # check room availability with a query
-        # if Any, show *
-    # display available rooms
-        # roomcode, room name, num beds, price
-    # calc total price
-    # insert into lab_7_reservations
     # TO DO
         # no matches = suggest 5
-        # specification
+        # notify if exceeds maxOcc
+        # present numbered list of available rooms
         # error check: if ONE is Any not both
+        # option to cancel 
+        # booking confirmation screen
     roomcode, bedtype, firstname = str(roomcode), str(bedtype), str(firstname)
     begindate = datetime.strptime(begindate, "%Y-%m-%d")
     enddate = datetime.strptime(enddate, "%Y-%m-%d")
@@ -160,10 +157,6 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
             AND r.RoomCode = '{roomcode}' AND r.BedType = '{bedtype}'
             order by popularity DESC
                    """
-
-        
-    #cursor.execute(query)
-    #result = cursor.fetchall()
     cursor.execute(all_rooms)
     all_room_vals = cursor.fetchall()
     print("VALUES: ", all_room_vals)
