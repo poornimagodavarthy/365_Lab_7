@@ -74,8 +74,9 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
     maxOccupancy = num_children + num_adults
     if begindate >= enddate:
         raise ValueError("Begin Date > End")
+
     if roomcode == "Any" and bedtype == "Any":
-        query = f"""
+        all_rooms = f"""
          with last180Days as (
              select Room, 
                     SUM(DATEDIFF(LEAST(CheckOut, CURDATE()), GREATEST(CheckIn, DATE_SUB(CURDATE(), INTERVAL 180 DAY)))) AS occupiedDays
@@ -99,7 +100,7 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
                  )
              )
          select RoomCode, RoomName, Beds, bedType, maxOcc, basePrice, decor,
-                 (r.basePrice * (DATEDIFF({enddate}','{begindate}'))) AS TotalPrice
+                 (r.basePrice * (DATEDIFF('{enddate}','{begindate}'))) AS TotalPrice
             from lab7_rooms as r
                 left join last180Days as l on l.Room = r.RoomCode
                 left join availableCheckInDays as a on a.Room = r.RoomCode
@@ -111,6 +112,7 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
                 FROM lab7_reservations r2
                 WHERE r2.CheckIn > '{begindate}' AND r2.CheckOut < '{enddate}'
             )
+
             order by popularity DESC
                    """
         
@@ -166,36 +168,45 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
     all_room_vals = cursor.fetchall()
     print("VALUES: ", all_room_vals)
     rate = all_room_vals[0][5]
+
     total_price = compute_total_price(begindate, enddate, rate)
+    print(total_price)
     
-    generate_code_helper = f"""
-        SELECT CODE
-        from lab7_reservations
-        WHERE MAX(CODE) = (
-            SELECT CODE
-            FROM lab7_reservations r2
-        )
-    """
+    new_code = generate_code(conn)
+    print(new_code)
+
     insert = f"""
         INSERT INTO lab7_reservations (CODE, Room, CheckIn, Checkout, Rate, LastName, FirstName, Adults, Kids) 
         VALUES
-        (10107, '{roomcode}', '{begindate.strftime("%Y-%m-%d")}', '{enddate.strftime("%Y-%m-%d")}', {rate}, '{lastname}',  
+        ({new_code}, '{roomcode}', '{begindate.strftime("%Y-%m-%d")}', '{enddate.strftime("%Y-%m-%d")}', {rate}, '{lastname}',  
         '{firstname}', {num_children}, {num_adults}
         )
         """
-    #if len(result) == 1:
-        #cursor.execute(insert)
-    #return result
+    cursor.execute(insert)
+    conn.commit()
+
+
 def compute_total_price(begindate, enddate, base_rate):
     total_cost = 0
     current_date = begindate
-    while current_date < enddate:
+    while current_date < enddate:  
         if current_date.weekday() < 4:  
             total_cost += base_rate
-        else: 
-            total_cost += base_rate * 1.1
+        else:  
+            total_cost += base_rate * 1.1  
         current_date += timedelta(days=1)
     return round(total_cost, 2)
+
+
+def generate_code(conn):
+    cursor = conn.cursor()
+    cursor.execute("SELECT MAX(CODE) FROM lab7_reservations")
+    max_code = cursor.fetchone()[0]
+    if max_code:
+        return max_code + 1
+    else:
+        return 10101
+
 
 def cancel_reservation(conn, code):
     pass
