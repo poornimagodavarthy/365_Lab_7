@@ -5,10 +5,9 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 import random
 
-# PARAMETRIZE EVERYTHINGG
 def connect_to_database():
-    #db_password = getpass.getpass("Enter the database password: ")
-    conn = mysql.connector.connect(user='pgodavar', password='Wtr25_365_028373715',
+    db_password = getpass.getpass("Enter the database password: ")
+    conn = mysql.connector.connect(user='pgodavar', password=db_password,
                                 host='mysql.labthreesixfive.com',
                                 database='pgodavar')
     return conn
@@ -62,13 +61,13 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
     num_children = int(num_children)
     num_adults = int(num_adults) 
     maxOccupancy = num_children + num_adults
-    """
     cursor.execute("SELECT MAX(maxOcc) FROM lab7_rooms")
     max_allowed_occupancy = cursor.fetchone()[0]
+
     if maxOccupancy > max_allowed_occupancy:
         print("Sorry, no rooms can accomodate this many guests. Please try booking multiple rooms.")
         return
-    """
+    
     if begindate >= enddate:
         raise ValueError("Begin Date > End")
     
@@ -164,7 +163,6 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
                 FROM lab7_reservations r2
                 WHERE r2.CheckIn > '{begindate}' AND r2.CheckOut < '{enddate}'
             )
-            
             order by popularity DESC
                    """
         rooms = ['AOB', 'IBD', 'RTE', 'HBB']
@@ -220,20 +218,10 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
     cursor.execute(all_rooms)
     all_room_vals = cursor.fetchall()
 
-
     if not all_room_vals:
         suggested_rooms = suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupancy)
         selected_room = present_suggestions(suggested_rooms)
         roomcode, bedtype, begindate, enddate, rate = selected_room[0], selected_room[3], datetime.strptime(selected_room[9], "%Y-%m-%d"), datetime.strptime(selected_room[11], "%Y-%m-%d"), selected_room[7]
-            
-        '''
-        if not suggested_rooms:
-            print("Sorry, no rooms are availble for those dates, please select a different date.")
-            return
-        else:
-            selected_room = present_suggestions(suggested_rooms)
-            roomcode, bedtype, begindate, enddate, rate = selected_room[0], selected_room[3], datetime.strptime(selected_room[9], "%Y-%m-%d"), datetime.strptime(selected_room[11], "%Y-%m-%d"), selected_room[7]
-            '''
     else:
         rate = all_room_vals[0][5]
         total_price = compute_total_price(begindate, enddate, rate)
@@ -272,12 +260,8 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
         print("Thank you for booking with us!")
 
     
-    
-
 def suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupancy):
     cursor = conn.cursor()
-    #logic: rank on lower price, higher popularity, higher max occupancy
-    
     query = f"""
     with last180Days as (
              select Room, 
@@ -631,18 +615,13 @@ monthly_stays AS (
     result = cursor.fetchall()
     formatted_result = []
     for row in result:
-        # Create a new tuple with formatted values
-        formatted_row = list(row)  # Convert tuple to list so we can modify it
-        
-        # Format each decimal value as a price
-        for i in range(1, len(formatted_row)):  # Skip the first element (month name)
+        formatted_row = list(row) 
+        for i in range(1, len(formatted_row)):  
             if isinstance(formatted_row[i], Decimal):
-                # Format as currency with dollar sign, thousands separator, and 2 decimal places
                 formatted_row[i] = "${:,.2f}".format(formatted_row[i])
         
-        formatted_result.append(tuple(formatted_row))  # Convert back to tuple
+        formatted_result.append(tuple(formatted_row))  
 
-    # Display or use the formatted result
     for row in formatted_result:
         for col in row:
             if col != '$0.00':
@@ -655,17 +634,6 @@ def main():
     else:
         print("Yay it connected!\n")
 
-    # QUERY 2 TESTS
-    #print(suggest_alternatives(conn, 'AUB', 'Queen', '2025-05-05', '2025-05-08', 1))
-        
-    #make_reservation(conn, 'jane', 'doe', 'HBB', 'Queen', '2025-05-05', '2025-05-08', 3, 1)
-        
-    #make_reservation(conn, "mary", "jane", "Any", "Any", '2025-05-16', '2025-05-18', 0, 1) #add more flexibility to suggest rooms, fix popularity not found
-    #make_reservation(conn, "joe", "bob", "HBB", "Any", '2025-05-02', '2025-05-08', 1, 1)
-   
-    #make_reservation(conn, "joe", "bob", 'Any', 'Queen', '2025-05-02', '2025-05-08', 1, 1)
-    make_reservation(conn, "joe", "bob", "HBB", "Queen", '2025-05-02', '2025-05-08', 1, 1)
-    '''
     while True:
         print("1. View rooms and rates\n")
         print("2. Make a reservation\n")
@@ -687,8 +655,7 @@ def main():
             enddate = input("End Date: ")
             num_children = input("Number of Children: ")
             num_adults = input("Number of Adults: ")
-            res = make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, enddate, num_children, num_adults)
-            #print(res)
+            make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, enddate, num_children, num_adults)
         elif choice == "3":
             code = input("Enter your reservation code: ")
             cancel_reservation(conn, code)
@@ -717,8 +684,5 @@ def main():
         else:
             print("Invalid choice. Please try again.")
             break
-            '''
-
-#cancel_reservation
 if __name__ == "__main__":
     main()
