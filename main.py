@@ -3,6 +3,7 @@ import mysql.connector
 from datetime import datetime
 from datetime import datetime, timedelta
 from decimal import Decimal
+import random
 
 # PARAMETRIZE EVERYTHINGG
 def connect_to_database():
@@ -55,20 +56,27 @@ def get_rooms(conn):
 
 def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, enddate, num_children, num_adults):
     cursor = conn.cursor()
-    # TO DO:
-        # notify if exceeds maxOcc
-        # error check: if ONE is Any not both
-        # option to cancel 
     roomcode, bedtype, firstname = str(roomcode), str(bedtype), str(firstname)
     begindate = datetime.strptime(begindate, "%Y-%m-%d")
     enddate = datetime.strptime(enddate, "%Y-%m-%d")
     num_children = int(num_children)
     num_adults = int(num_adults) 
     maxOccupancy = num_children + num_adults
+    """
+    cursor.execute("SELECT MAX(maxOcc) FROM lab7_rooms")
+    max_allowed_occupancy = cursor.fetchone()[0]
+    if maxOccupancy > max_allowed_occupancy:
+        print("Sorry, no rooms can accomodate this many guests. Please try booking multiple rooms.")
+        return
+    """
     if begindate >= enddate:
         raise ValueError("Begin Date > End")
-
-    if roomcode == "Any" and bedtype == "Any":
+    
+    if roomcode != "Any" and bedtype == "Any":
+        print("Error: You cannot specify 'Any' for bedtype. The room will come with its own bed type.")
+        return
+    
+    elif roomcode == "Any" and bedtype != "Any":
         all_rooms = f"""
          with last180Days as (
              select Room, 
@@ -92,8 +100,12 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
                     where r2.Room = r1.Room and r2.CheckOut < CURDATE() 
                  )
              )
-         select RoomCode, RoomName, Beds, bedType, maxOcc, basePrice, decor,
-                 (r.basePrice * (DATEDIFF('{enddate}','{begindate}'))) AS TotalPrice
+         select RoomCode, RoomName, Beds, bedType, maxOcc, basePrice, decor, 
+                (r.basePrice * (DATEDIFF('{enddate}','{begindate}'))) AS TotalPrice,
+                 COALESCE(ROUND(l.occupiedDays/180, 2), 0) as popularity, 
+                 COALESCE(a.nextAvailableCheckIn, 'No future bookings') AS nextAvailableCheckIn, 
+                 COALESCE (m.lengthOfStay, 0) as lengthOfStay,
+                 COALESCE (m.mostRecent, 'No past stays') as mostRecent
             from lab7_rooms as r
                 left join last180Days as l on l.Room = r.RoomCode
                 left join availableCheckInDays as a on a.Room = r.RoomCode
@@ -105,10 +117,62 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
                 FROM lab7_reservations r2
                 WHERE r2.CheckIn > '{begindate}' AND r2.CheckOut < '{enddate}'
             )
-
+            AND r.BedType = '{bedtype}'
             order by popularity DESC
                    """
-        
+        rooms = ['AOB', 'IBD', 'RTE', 'HBB']
+        roomcode = random.choice(rooms)
+
+    elif roomcode == "Any" and bedtype == "Any":
+        all_rooms = f"""
+         with last180Days as (
+             select Room, 
+                    SUM(DATEDIFF(LEAST(CheckOut, CURDATE()), GREATEST(CheckIn, DATE_SUB(CURDATE(), INTERVAL 180 DAY)))) AS occupiedDays
+             from lab7_reservations
+             where LEAST(CheckOut, CURDATE()) > GREATEST(CheckIn, DATE_SUB(CURDATE(), INTERVAL 180 DAY))
+             group by Room
+             ),
+         availableCheckInDays as (
+             select Room, MIN(CheckOut) as nextAvailableCheckIn
+             from lab7_reservations
+             where CheckOut >= CURDATE()
+             group by Room
+             ),
+         mostRecentStays as (
+             select r1.Room, r1.CheckOut as mostRecent, DATEDIFF(r1.CheckOut, r1.CheckIn) as lengthOfStay
+             from lab7_reservations as r1
+             where r1.CheckOut = (
+                 select MAX(r2.CheckOut)
+                 from lab7_reservations as r2
+                    where r2.Room = r1.Room and r2.CheckOut < CURDATE() 
+                 )
+             )
+         select RoomCode, RoomName, Beds, bedType, maxOcc, basePrice, decor, 
+                (r.basePrice * (DATEDIFF('{enddate}','{begindate}'))) AS TotalPrice,
+                 COALESCE(ROUND(l.occupiedDays/180, 2), 0) as popularity, 
+                 COALESCE(a.nextAvailableCheckIn, 'No future bookings') AS nextAvailableCheckIn, 
+                 COALESCE (m.lengthOfStay, 0) as lengthOfStay,
+                 COALESCE (m.mostRecent, 'No past stays') as mostRecent
+            from lab7_rooms as r
+                left join last180Days as l on l.Room = r.RoomCode
+                left join availableCheckInDays as a on a.Room = r.RoomCode
+                left join mostRecentStays as m on m.Room = r.RoomCode
+            WHERE nextAvailableCheckIn <= '{begindate}'
+            AND r.maxOcc >= {maxOccupancy}
+            AND NOT EXISTS (
+                SELECT 1
+                FROM lab7_reservations r2
+                WHERE r2.CheckIn > '{begindate}' AND r2.CheckOut < '{enddate}'
+            )
+            
+            order by popularity DESC
+                   """
+        rooms = ['AOB', 'IBD', 'RTE', 'HBB']
+        beds = ['Queen','King', 'Double']
+        roomcode = random.choice(rooms)
+        bedtype = random.choice(beds)
+
+
     else:
         all_rooms = f"""
          with last180Days as (
@@ -155,21 +219,21 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
                    """
     cursor.execute(all_rooms)
     all_room_vals = cursor.fetchall()
-    
+
+
     if not all_room_vals:
         suggested_rooms = suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupancy)
-        selected_room = present_suggestions(suggested_rooms)
-        print("SELECTED: \n", selected_room)
-        # output: ('AOB', 'Abscond or bolster', 2, 'Queen', 4, Decimal('175.00'), 'traditional', Decimal('525.00'), Decimal('0.58'), '2025-03-15', 2, '2025-03-09', 4)
-        roomcode, bedtype, begindate, enddate, rate = selected_room[0], selected_room[3], datetime.strptime(selected_room[9], "%Y-%m-%d"), datetime.strptime(selected_room[11], "%Y-%m-%d"), selected_room[7]
+        if not suggested_rooms:
+            print("Sorry, no rooms are availble for those dates, please select a different date.")
+            return
+        else:
+            selected_room = present_suggestions(suggested_rooms)
+            roomcode, bedtype, begindate, enddate, rate = selected_room[0], selected_room[3], datetime.strptime(selected_room[9], "%Y-%m-%d"), datetime.strptime(selected_room[11], "%Y-%m-%d"), selected_room[7]
     else:
         rate = all_room_vals[0][5]
-    total_price = compute_total_price(begindate, enddate, rate)
-
-    print(total_price)
+        total_price = compute_total_price(begindate, enddate, rate)
     
     new_code = generate_code(conn)
-    print(new_code)
 
     insert = f"""
         INSERT INTO lab7_reservations (CODE, Room, CheckIn, Checkout, Rate, LastName, FirstName, Adults, Kids) 
@@ -180,7 +244,6 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
         """
     cursor.execute(insert)
     conn.commit()
-    # PRINT CONFIRMATION
     confirmation_query = """
     SELECT CODE, Room, CheckIn, CheckOut, Rate, LastName, FirstName, Adults, Kids, RoomName
     FROM lab7_reservations 
@@ -209,6 +272,7 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
 def suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupancy):
     cursor = conn.cursor()
     #logic: rank on lower price, higher popularity, higher max occupancy
+    
     query = f"""
     with last180Days as (
              select Room, 
@@ -246,7 +310,6 @@ def suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupan
                     left join mostRecentStays as m on m.Room = r.RoomCode
                 WHERE nextAvailableCheckIn <= '{begindate}'
                 AND r.maxOcc >= {maxOccupancy}
-                AND (r.RoomCode != '{roomcode}') 
                 AND NOT EXISTS (
                     SELECT 1
                     FROM lab7_reservations r2
@@ -272,7 +335,6 @@ def present_suggestions(suggested_rooms):
             print("Invalid selection, try again")
             return None
         selected_room = suggested_rooms[option -1]
-        print("CHOSEN: ", selected_room)
         return selected_room
     except ValueError:
         print("Invalid input, please enter a number")
@@ -285,7 +347,7 @@ def compute_total_price(begindate, enddate, base_rate):
         if current_date.weekday() < 4:  
             total_cost += base_rate
         else:  
-            total_cost += base_rate * 1.1  
+            total_cost += base_rate * Decimal('1.1')
         current_date += timedelta(days=1)
     return round(total_cost, 2)
 
@@ -590,8 +652,18 @@ def main():
         print("Database didn't connect\n")
     else:
         print("Yay it connected!\n")
-    #print(suggest_alternatives(conn, 'AUB', 'Queen', '2025-05-05', '2025-05-08', 1))
 
+    # QUERY 2 TESTS
+    #print(suggest_alternatives(conn, 'AUB', 'Queen', '2025-05-05', '2025-05-08', 1))
+        
+    #make_reservation(conn, 'jane', 'doe', 'HBB', 'Queen', '2025-05-05', '2025-05-08', 3, 1)
+        
+    #make_reservation(conn, "mary", "jane", "Any", "Any", '2025-05-16', '2025-05-18', 0, 1) #add more flexibility to suggest rooms, fix popularity not found
+    #make_reservation(conn, "joe", "bob", "HBB", "Any", '2025-05-02', '2025-05-08', 1, 1)
+   
+    #make_reservation(conn, "joe", "bob", 'Any', 'Queen', '2025-05-02', '2025-05-08', 1, 1)
+    make_reservation(conn, "joe", "bob", "HBB", "Queen", '2025-05-02', '2025-05-08', 1, 1)
+    '''
     while True:
         print("1. View rooms and rates\n")
         print("2. Make a reservation\n")
@@ -643,7 +715,7 @@ def main():
         else:
             print("Invalid choice. Please try again.")
             break
-            
+            '''
 
 #cancel_reservation
 if __name__ == "__main__":
