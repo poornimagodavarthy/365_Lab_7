@@ -68,11 +68,7 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
     cursor = conn.cursor()
     roomcode, bedtype, firstname = str(roomcode), str(bedtype), str(firstname)
     begindate = datetime.strptime(begindate, "%Y-%m-%d")
-    if begindate < datetime.today():
-        raise ValueError("Please enter a date that is either today or in the future, try again")
     enddate = datetime.strptime(enddate, "%Y-%m-%d")
-    if enddate < begindate:
-        raise ValueError("Please enter a valid end date.")
     num_children = int(num_children)
     num_adults = int(num_adults) 
     maxOccupancy = num_children + num_adults
@@ -232,6 +228,53 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
                    """
     cursor.execute(all_rooms)
     all_room_vals = cursor.fetchall()
+    if all_room_vals:
+        selected_room = present_suggestions(all_room_vals)
+        if selected_room:
+            roomcode, bedtype, begindate, enddate, rate = selected_room[0], selected_room[3], datetime.strptime(selected_room[9], "%Y-%m-%d"), datetime.strptime(selected_room[11], "%Y-%m-%d"), selected_room[7]
+            print("\nPlease confirm your reservation details before proceeding:")
+            print("-" * 50)
+            print(f"Room: {selected_room[1]} | Bed Type: {selected_room[3]} | Max Occupancy: {selected_room[4]}")
+            print(f"Rate per night: ${rate}")
+            print(f"Check-in Date: {begindate.strftime('%Y-%m-%d')}")
+            print(f"Check-out Date: {enddate.strftime('%Y-%m-%d')}")
+            print("-" * 50)
+            confirmation = input("Do you want to confirm this reservation? (y/n): ")
+            if confirmation.lower() == 'y':
+                new_code = generate_code(conn)
+                new_code = generate_code(conn)
+
+                insert = f"""
+                    INSERT INTO lab7_reservations (CODE, Room, CheckIn, Checkout, Rate, LastName, FirstName, Adults, Kids) 
+                    VALUES
+                    ({new_code}, '{roomcode}', '{begindate.strftime("%Y-%m-%d")}', '{enddate.strftime("%Y-%m-%d")}', {rate}, '{lastname}',  
+                    '{firstname}', {num_children}, {num_adults}
+                    )
+                    """
+                cursor.execute(insert)
+                conn.commit()
+                confirmation_query = """
+                SELECT CODE, Room, CheckIn, CheckOut, Rate, LastName, FirstName, Adults, Kids, RoomName
+                FROM lab7_reservations 
+                JOIN lab7_rooms ON Room = RoomCode
+                WHERE CODE = %s
+                """
+                cursor.execute(confirmation_query, (new_code,))
+                reservation_details = cursor.fetchone()
+
+                if reservation_details:
+                    print("\nReservation Confirmed!")
+                    print("-" * 50)
+                    print(f"Reservation Code: {reservation_details[0]}")
+                    print(f"Guest Name: {reservation_details[6]} {reservation_details[5]}")
+                    print(f"Room: {reservation_details[1]} - {reservation_details[9]}")
+                    print(f"Check-in Date: {reservation_details[2]}")
+                    print(f"Check-out Date: {reservation_details[3]}")
+                    print(f"Rate per Night: ${reservation_details[4]:.2f}")
+                    print(f"Total Guests: {reservation_details[7]} Adults, {reservation_details[8]} Children")
+                    print("-" * 50)
+                    print("Thank you for booking with us!")
+                
 
     if not all_room_vals:
         suggested_rooms = suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupancy)
@@ -240,59 +283,26 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
     else:
         rate = all_room_vals[0][5]
         total_price = compute_total_price(begindate, enddate, rate)
-    
-    new_code = generate_code(conn)
-
-    insert = f"""
-        INSERT INTO lab7_reservations (CODE, Room, CheckIn, Checkout, Rate, LastName, FirstName, Adults, Kids) 
-        VALUES
-        ({new_code}, '{roomcode}', '{begindate.strftime("%Y-%m-%d")}', '{enddate.strftime("%Y-%m-%d")}', {rate}, '{lastname}',  
-        '{firstname}', {num_children}, {num_adults}
-        )
-        """
-    cursor.execute(insert)
-    conn.commit()
-    confirmation_query = """
-    SELECT CODE, Room, CheckIn, CheckOut, Rate, LastName, FirstName, Adults, Kids, RoomName
-    FROM lab7_reservations 
-    JOIN lab7_rooms ON Room = RoomCode
-    WHERE CODE = %s
-    """
-    cursor.execute(confirmation_query, (new_code,))
-    reservation_details = cursor.fetchone()
-
-    if reservation_details:
-        print("\nReservation Confirmed!")
-        print("-" * 50)
-        print(f"Reservation Code: {reservation_details[0]}")
-        print(f"Guest Name: {reservation_details[6]} {reservation_details[5]}")
-        print(f"Room: {reservation_details[1]} - {reservation_details[9]}")
-        print(f"Check-in Date: {reservation_details[2]}")
-        print(f"Check-out Date: {reservation_details[3]}")
-        print(f"Rate per Night: ${reservation_details[4]:.2f}")
-        print(f"Total Guests: {reservation_details[7]} Adults, {reservation_details[8]} Children")
-        print("-" * 50)
-        print("Thank you for booking with us!")
 
     
 def suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupancy):
     cursor = conn.cursor()
     query = f"""
     with last180Days as (
-             select Room, 
+             select DISTINCT Room, 
                     SUM(DATEDIFF(LEAST(CheckOut, CURDATE()), GREATEST(CheckIn, DATE_SUB(CURDATE(), INTERVAL 180 DAY)))) AS occupiedDays
              from lab7_reservations
              where LEAST(CheckOut, CURDATE()) > GREATEST(CheckIn, DATE_SUB(CURDATE(), INTERVAL 180 DAY))
              group by Room
              ),
          availableCheckInDays as (
-             select Room, MIN(CheckOut) as nextAvailableCheckIn
+             select DISTINCT Room, MIN(CheckOut) as nextAvailableCheckIn
              from lab7_reservations
              where CheckOut >= CURDATE()
              group by Room
              ),
          mostRecentStays as (
-             select r1.Room, r1.CheckOut as mostRecent, DATEDIFF(r1.CheckOut, r1.CheckIn) as lengthOfStay
+             select DISTINCT r1.Room, r1.CheckOut as mostRecent, DATEDIFF(r1.CheckOut, r1.CheckIn) as lengthOfStay
              from lab7_reservations as r1
              where r1.CheckOut = (
                  select MAX(r2.CheckOut)
@@ -327,9 +337,9 @@ def suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupan
     return result
 
 def present_suggestions(suggested_rooms):
-    print("We couldn't find exact matches. Would you be interested in any of these other rooms? \n")
+    print("Would you be interested in any of these rooms? \n")
     for i, room in enumerate(suggested_rooms, 1):
-        print(f"{i}. Room: {room[1]} | Beds: {room[2]} | Bed Type: {room[3]} | Max Occupancy: {room[4]} | Price: {room[5]} | Decor: {room[6]} | Available From: {room[8]} | Most Recent Stay: {room[9]}, \n")
+        print(f"{i}. Room: {room[1]} | Beds: {room[2]} | Bed Type: {room[3]} | Max Occupancy: {room[4]} | Price: {room[5]} | Decor: {room[6]} | Available From: {room[9]} | Most Recent Stay: {room[11]}, \n")
     try: 
         option = int(input("Please select a room number (1-5): "))
         if option <1 or option > 5:
