@@ -170,14 +170,17 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
                    """
     cursor.execute(all_rooms)
     all_room_vals = cursor.fetchall()
-    print("VALUES: ", all_room_vals)
-    rate = all_room_vals[0][5]
+    # print("VALUES: ", all_room_vals)
+    # rate = all_room_vals[0][5]
     if not all_room_vals:
         suggested_rooms = suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupancy)
-        chosen_option = present_suggestions(suggested_rooms)
-    #DISPLAY RESULTS PROPERLY
+        selected_room = present_suggestions(suggested_rooms)
+        print("SELECTED: \n", selected_room)
+        # output: ('AOB', 'Abscond or bolster', 2, 'Queen', 4, Decimal('175.00'), 'traditional', Decimal('525.00'), Decimal('0.58'), '2025-03-15', 2, '2025-03-09', 4)
+        roomcode, bedtype, begindate, enddate, rate = selected_room[0], selected_room[3], datetime.strptime(selected_room[9], "%Y-%m-%d"), datetime.strptime(selected_room[11], "%Y-%m-%d"), selected_room[7]
+    else:
+        rate = all_room_vals[0][5]
     total_price = compute_total_price(begindate, enddate, rate)
-    roomcode, bedtype, begindate, enddate, rate = chosen_option
 
     print(total_price)
     
@@ -193,6 +196,28 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
         """
     cursor.execute(insert)
     conn.commit()
+
+    confirmation_query = """
+    SELECT CODE, Room, CheckIn, CheckOut, Rate, LastName, FirstName, Adults, Kids, RoomName
+    FROM lab7_reservations 
+    JOIN lab7_rooms ON Room = RoomCode
+    WHERE CODE = %s
+    """
+    cursor.execute(confirmation_query, (new_code,))
+    reservation_details = cursor.fetchone()
+
+    if reservation_details:
+        print("\nReservation Confirmed!")
+        print("-" * 50)
+        print(f"Reservation Code: {reservation_details[0]}")
+        print(f"Guest Name: {reservation_details[6]} {reservation_details[5]}")
+        print(f"Room: {reservation_details[1]} - {reservation_details[9]}")
+        print(f"Check-in Date: {reservation_details[2]}")
+        print(f"Check-out Date: {reservation_details[3]}")
+        print(f"Rate per Night: ${reservation_details[4]:.2f}")
+        print(f"Total Guests: {reservation_details[7]} Adults, {reservation_details[8]} Children")
+        print("-" * 50)
+        print("Thank you for booking with us!")
 
 def suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupancy):
     cursor = conn.cursor()
@@ -384,13 +409,11 @@ def show_revenue(conn):
                 res.CheckIn,
                 res.CheckOut,
                 DATEDIFF(res.CheckOut, res.CheckIn) AS nights,
-                -- Calculate weekday nights in the reservation
                 (
                     SELECT COUNT(*)
                     FROM (
                         SELECT ADDDATE(res.CheckIn, n) AS date
                         FROM (
-                            -- Generate sequence of numbers from 0 to 999 (adjust as needed)
                             SELECT a.i + b.i*10 + c.i*100 AS n
                             FROM 
                                 (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) a,
@@ -401,27 +424,22 @@ def show_revenue(conn):
                         AND WEEKDAY(ADDDATE(res.CheckIn, n)) NOT IN (5, 6)
                     ) weekday_dates
                 ) AS weekday_nights,
-                -- Weekday rate
                 r.BasePrice AS weekday_rate,
                 r.BasePrice * 1.10 AS weekend_rate
             FROM lab7_reservations res
             JOIN lab7_rooms r ON res.Room = r.RoomCode
         ),
         monthly_stays AS (
-            -- Step 2: Split reservations by month
             SELECT
                 rd.Room,
                 rd.RoomName,
                 YEAR(rd.CheckIn) AS year,
                 MONTH(rd.CheckIn) AS month_num,
                 MONTHNAME(rd.CheckIn) AS month_name,
-                -- Handle stays within a single month
                 CASE
                     WHEN MONTH(rd.CheckIn) = MONTH(rd.CheckOut - INTERVAL 1 DAY) THEN
-                        -- Calculate full stay price
                         (rd.nights - rd.weekday_nights) * rd.weekend_rate + rd.weekday_nights * rd.weekday_rate
                     ELSE
-                        -- Calculate partial stay price (for check-in month)
                         (DATEDIFF(LAST_DAY(rd.CheckIn) + INTERVAL 1 DAY, rd.CheckIn) - 
                             (
                                 SELECT COUNT(*)
