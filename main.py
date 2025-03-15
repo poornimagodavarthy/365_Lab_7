@@ -1,9 +1,11 @@
 import getpass
+import warnings
 import mysql.connector
 from datetime import datetime
 from datetime import datetime, timedelta
 from decimal import Decimal
 import random
+import pandas as pd
 
 def connect_to_database():
     db_password = getpass.getpass("Enter the database password: ")
@@ -13,8 +15,8 @@ def connect_to_database():
     return conn
 
 def get_rooms(conn):
-    cursor = conn.cursor()
-    cursor.execute("""
+    warnings.filterwarnings("ignore")
+    df = pd.read_sql("""
          with last180Days as (
              select Room, 
                     SUM(DATEDIFF(LEAST(CheckOut, CURDATE()), GREATEST(CheckIn, DATE_SUB(CURDATE(), INTERVAL 180 DAY)))) AS occupiedDays
@@ -47,10 +49,19 @@ def get_rooms(conn):
                 left join availableCheckInDays as a on a.Room = r.RoomCode
                 left join mostRecentStays as m on m.Room = r.RoomCode
             order by popularity DESC
-                   """)
-    result = cursor.fetchall()
-    for row in result:
-        print (f"Room: {row[0]}, Room Name: {row[1]}, Beds: {row[2]}, Bed Type: {row[3]}, Max Occ: {row[4]}, Base Price: {row[5]}, Decor: {row[6]}, Popularity: {row[7]}, Next Available Check-in: {row[8]}, Most Recent Stay: {row[9]} days, Check-out Date: {row[10]}")
+                   """, conn)
+    df.columns = [
+    "Room Code", "Room Name", "# Beds", "Bed Type",
+    "Max Occ", "Base Price ($)", "Decor",
+    "Popularity", "Next Available Check-in",
+    "Last Stay Length", "Last Checkout Date"]
+
+    if df.empty:
+        print("No rooms found.")
+    else:
+        print(df.to_string(index=False))  
+
+    return df
 
 
 def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, enddate, num_children, num_adults):
@@ -379,7 +390,7 @@ def cancel_reservation(conn, code):
         return
     
 def search_reservation(conn, firstname, lastname, startdate, enddate, roomcode, rsvcode):
-    cursor = conn.cursor()
+    warnings.filterwarnings("ignore")
     conditions = []
     sub_values = []
  
@@ -410,11 +421,20 @@ def search_reservation(conn, firstname, lastname, startdate, enddate, roomcode, 
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     
-    cursor.execute(query, sub_values)
-    result = cursor.fetchall()
-    for row in result:
-        print (f"CODE: {row[0]}, Room: {row[1]}, Check-in: {row[2]}, CheckOut: {row[3]}, Rate: {row[4]}, Last Name: {row[5]}, FirstName: {row[6]}, Adults: {row[7]}, Kids: {row[8]}, Room Name: {row[9]}")
-    cursor.close()
+    df = pd.read_sql(query, conn, params=sub_values)
+
+    df.columns = [
+    "Room Code", "Room Name", "Check-In", "Check-Out",
+    "Rate", "Last Name", "First Name",
+    "Adults", "Kids",
+    "Room Name"]
+
+    if df.empty:
+        print("No rooms found.")
+    else:
+        print(df.to_string(index=False))
+    return df
+
 
 def is_valid_date(date):
     try:
@@ -424,177 +444,179 @@ def is_valid_date(date):
         return False
 
 def show_revenue(conn):
+    warnings.filterwarnings("ignore")
     cursor = conn.cursor()
-    #revenue per night for each reservation
-    # query = f"""
-    #     SELECT 
-    #         r.RoomCode,
-    #         g.date,
-    #         CASE 
-    #             WHEN WEEKDAY(g.date) IN (5,6) THEN r.BasePrice * 1.10  
-    #             ELSE r.BasePrice
-    #         END AS revenue
-    #     FROM lab7_reservations res
-    #     JOIN (
-    #         SELECT DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-01-01'), INTERVAL numbers.n DAY) AS date
-    #         FROM (
-    #             SELECT ones.n + tens.n + hundreds.n AS n
-    #             FROM 
-    #                 (SELECT 0 AS n UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
-    #                 UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) AS ones
-    #             JOIN 
-    #                 (SELECT 0 AS n UNION ALL SELECT 10 UNION ALL SELECT 20 UNION ALL SELECT 30 UNION ALL SELECT 40
-    #                 UNION ALL SELECT 50 UNION ALL SELECT 60 UNION ALL SELECT 70 UNION ALL SELECT 80 UNION ALL SELECT 90) AS tens
-    #                 ON 1=1  
-    #             JOIN 
-    #                 (SELECT 0 AS n UNION ALL SELECT 100 UNION ALL SELECT 200 UNION ALL SELECT 300) AS hundreds
-    #                 ON 1=1  
-    #         ) AS numbers
-    #         WHERE DATE_ADD(DATE_FORMAT(CURRENT_DATE, '%Y-01-01'), INTERVAL numbers.n DAY) <= DATE_FORMAT(CURRENT_DATE, '%Y-12-31')
-    #     ) g ON g.date >= res.CheckIn AND g.date < res.CheckOut
-    #     JOIN lab7_rooms r ON res.Room = r.RoomCode;
-    #     """
-    # result = cursor.fetchall(query)
-    # return result
-
-    cursor.execute(""" 
-        WITH reservation_dates AS (
-    -- Step 1: Generate one row per reservation with dates and price info
-    SELECT 
-        res.CODE,
-        res.Room,
-        r.RoomName,
-        res.CheckIn,
-        res.CheckOut,
-        DATEDIFF(res.CheckOut, res.CheckIn) AS nights,
-        -- Calculate weekday nights in the reservation
-        (
-            SELECT COUNT(*)
-            FROM (
-                SELECT ADDDATE(res.CheckIn, n) AS date
-                FROM (
-                    -- Generate sequence of numbers from 0 to 999 (adjust as needed)
-                    SELECT a.i + b.i*10 + c.i*100 AS n
-                    FROM 
-                        (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) a,
-                        (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) b,
-                        (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) c
-                ) numbers
-                WHERE ADDDATE(res.CheckIn, n) < res.CheckOut
-                  AND WEEKDAY(ADDDATE(res.CheckIn, n)) NOT IN (5, 6)
-            ) weekday_dates
-        ) AS weekday_nights,
-        -- Weekday rate
-        r.BasePrice AS weekday_rate,
-        r.BasePrice * 1.10 AS weekend_rate
-    FROM lab7_reservations res
-    JOIN lab7_rooms r ON res.Room = r.RoomCode
-),
-monthly_stays AS (
-    -- Step 2: Split reservations by month
-    SELECT
-        rd.Room,
-        rd.RoomName,
-        YEAR(rd.CheckIn) AS year,
-        MONTH(rd.CheckIn) AS month_num,
-        MONTHNAME(rd.CheckIn) AS month_name,
-        -- Handle stays within a single month
-        CASE
-            WHEN MONTH(rd.CheckIn) = MONTH(rd.CheckOut - INTERVAL 1 DAY) THEN
-                -- Calculate full stay price
-                (rd.nights - rd.weekday_nights) * rd.weekend_rate + rd.weekday_nights * rd.weekday_rate
-            ELSE
-                -- Calculate partial stay price (for check-in month)
-                (DATEDIFF(LAST_DAY(rd.CheckIn) + INTERVAL 1 DAY, rd.CheckIn) - 
+    df = pd.read_sql(""" 
+        WITH months as (
+            SELECT 1 as month_num, 'January' as month_name UNION ALL
+            SELECT 2, 'February' UNION ALL
+            SELECT 3, 'March' UNION ALL
+            SELECT 4, 'April' UNION ALL
+            SELECT 5, 'May' UNION ALL
+            SELECT 6, 'June' UNION ALL
+            SELECT 7, 'July' UNION ALL
+            SELECT 8, 'August' UNION ALL
+            SELECT 9, 'September' UNION ALL
+            SELECT 10, 'October' UNION ALL
+            SELECT 11, 'November' UNION ALL
+            SELECT 12, 'December' 
+                   ),
+        reservation_dates AS (
+            SELECT 
+                res.CODE,
+                res.Room,
+                r.RoomName,
+                res.CheckIn,
+                res.CheckOut,
+                DATEDIFF(res.CheckOut, res.CheckIn) AS nights,
+                -- Calculate weekday nights in the reservation
+                (
+                    SELECT COUNT(*)
+                    FROM (
+                        SELECT ADDDATE(res.CheckIn, n) AS date
+                        FROM (
+                            -- Generate sequence of numbers from 0 to 999 (adjust as needed)
+                            SELECT a.i + b.i*10 + c.i*100 AS n
+                            FROM 
+                                (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) a,
+                                (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) b,
+                                (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) c
+                        ) numbers
+                        WHERE ADDDATE(res.CheckIn, n) < res.CheckOut
+                        AND WEEKDAY(ADDDATE(res.CheckIn, n)) NOT IN (5, 6)
+                    ) weekday_dates
+                ) AS weekday_nights,
+                -- Weekday rate
+                r.BasePrice AS weekday_rate,
+                r.BasePrice * 1.10 AS weekend_rate
+            FROM lab7_reservations res
+            JOIN lab7_rooms r ON res.Room = r.RoomCode
+        ),
+        monthly_stays AS (
+            -- Step 2: Split reservations by month
+            SELECT
+                rd.Room,
+                rd.RoomName,
+                YEAR(rd.CheckIn) AS year,
+                MONTH(rd.CheckIn) AS month_num,
+                MONTHNAME(rd.CheckIn) AS month_name,
+                -- Handle stays within a single month
+                CASE
+                    WHEN MONTH(rd.CheckIn) = MONTH(rd.CheckOut - INTERVAL 1 DAY) THEN
+                        -- Calculate full stay price
+                        (rd.nights - rd.weekday_nights) * rd.weekend_rate + rd.weekday_nights * rd.weekday_rate
+                    ELSE
+                        -- Calculate partial stay price (for check-in month)
+                        (DATEDIFF(LAST_DAY(rd.CheckIn) + INTERVAL 1 DAY, rd.CheckIn) - 
+                            (
+                                SELECT COUNT(*)
+                                FROM (
+                                    SELECT ADDDATE(rd.CheckIn, n) AS date
+                                    FROM (
+                                        SELECT a.i + b.i*10 AS n
+                                        FROM 
+                                            (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) a,
+                                            (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3) b
+                                    ) numbers
+                                    WHERE ADDDATE(rd.CheckIn, n) < LAST_DAY(rd.CheckIn) + INTERVAL 1 DAY
+                                    AND WEEKDAY(ADDDATE(rd.CheckIn, n)) IN (5, 6)
+                                ) weekend_dates
+                            )
+                        ) * rd.weekday_rate + 
+                        (
+                            SELECT COUNT(*)
+                            FROM (
+                                SELECT ADDDATE(rd.CheckIn, n) AS date
+                                FROM (
+                                    SELECT a.i + b.i*10 AS n
+                                    FROM 
+                                        (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) a,
+                                        (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3) b
+                                ) numbers
+                                WHERE ADDDATE(rd.CheckIn, n) < LAST_DAY(rd.CheckIn) + INTERVAL 1 DAY
+                                AND WEEKDAY(ADDDATE(rd.CheckIn, n)) IN (5, 6)
+                            ) weekend_dates
+                        ) * rd.weekend_rate
+                END AS month_revenue
+            FROM reservation_dates rd
+            
+            UNION ALL
+            
+            SELECT
+                rd.Room,
+                rd.RoomName,
+                YEAR(rd.CheckOut) AS year,
+                MONTH(rd.CheckOut) AS month_num,
+                MONTHNAME(rd.CheckOut) AS month_name,
+                     
+                (DATEDIFF(rd.CheckOut, DATE_FORMAT(rd.CheckOut, '%Y-%m-01')) - 
                     (
                         SELECT COUNT(*)
                         FROM (
-                            SELECT ADDDATE(rd.CheckIn, n) AS date
+                            SELECT ADDDATE(DATE_FORMAT(rd.CheckOut, '%Y-%m-01'), n) AS date
                             FROM (
                                 SELECT a.i + b.i*10 AS n
                                 FROM 
                                     (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) a,
                                     (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3) b
                             ) numbers
-                            WHERE ADDDATE(rd.CheckIn, n) < LAST_DAY(rd.CheckIn) + INTERVAL 1 DAY
-                              AND WEEKDAY(ADDDATE(rd.CheckIn, n)) IN (5, 6)
+                            WHERE ADDDATE(DATE_FORMAT(rd.CheckOut, '%Y-%m-01'), n) < rd.CheckOut
+                            AND WEEKDAY(ADDDATE(DATE_FORMAT(rd.CheckOut, '%Y-%m-01'), n)) IN (5, 6)
                         ) weekend_dates
                     )
                 ) * rd.weekday_rate + 
                 (
                     SELECT COUNT(*)
                     FROM (
-                        SELECT ADDDATE(rd.CheckIn, n) AS date
+                        SELECT ADDDATE(DATE_FORMAT(rd.CheckOut, '%Y-%m-01'), n) AS date
                         FROM (
                             SELECT a.i + b.i*10 AS n
                             FROM 
                                 (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) a,
                                 (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3) b
                         ) numbers
-                        WHERE ADDDATE(rd.CheckIn, n) < LAST_DAY(rd.CheckIn) + INTERVAL 1 DAY
-                          AND WEEKDAY(ADDDATE(rd.CheckIn, n)) IN (5, 6)
+                        WHERE ADDDATE(DATE_FORMAT(rd.CheckOut, '%Y-%m-01'), n) < rd.CheckOut
+                        AND WEEKDAY(ADDDATE(DATE_FORMAT(rd.CheckOut, '%Y-%m-01'), n)) IN (5, 6)
                     ) weekend_dates
                 ) * rd.weekend_rate
-        END AS month_revenue
-    FROM reservation_dates rd
-    
-    UNION ALL
-    
-    -- Handle the checkout month for multi-month stays
-    SELECT
-        rd.Room,
-        rd.RoomName,
-        YEAR(rd.CheckOut) AS year,
-        MONTH(rd.CheckOut) AS month_num,
-        MONTHNAME(rd.CheckOut) AS month_name,
-        -- Calculate partial stay price (for check-out month)
-        (DATEDIFF(rd.CheckOut, DATE_FORMAT(rd.CheckOut, '%Y-%m-01')) - 
-            (
-                SELECT COUNT(*)
-                FROM (
-                    SELECT ADDDATE(DATE_FORMAT(rd.CheckOut, '%Y-%m-01'), n) AS date
-                    FROM (
-                        SELECT a.i + b.i*10 AS n
-                        FROM 
-                            (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) a,
-                            (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3) b
-                    ) numbers
-                    WHERE ADDDATE(DATE_FORMAT(rd.CheckOut, '%Y-%m-01'), n) < rd.CheckOut
-                      AND WEEKDAY(ADDDATE(DATE_FORMAT(rd.CheckOut, '%Y-%m-01'), n)) IN (5, 6)
-                ) weekend_dates
-            )
-        ) * rd.weekday_rate + 
-        (
-            SELECT COUNT(*)
-            FROM (
-                SELECT ADDDATE(DATE_FORMAT(rd.CheckOut, '%Y-%m-01'), n) AS date
-                FROM (
-                    SELECT a.i + b.i*10 AS n
-                    FROM 
-                        (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) a,
-                        (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3) b
-                ) numbers
-                WHERE ADDDATE(DATE_FORMAT(rd.CheckOut, '%Y-%m-01'), n) < rd.CheckOut
-                  AND WEEKDAY(ADDDATE(DATE_FORMAT(rd.CheckOut, '%Y-%m-01'), n)) IN (5, 6)
-            ) weekend_dates
-        ) * rd.weekend_rate
-    FROM reservation_dates rd
-    WHERE MONTH(rd.CheckIn) <> MONTH(rd.CheckOut - INTERVAL 1 DAY)
-        ),
-        monthly_revenue AS (
-            SELECT
-                Room,
-                RoomName,
-                month_num,
-                month_name,
-                ROUND(SUM(month_revenue)) AS monthly_revenue
-            FROM monthly_stays
-            WHERE year = YEAR(CURDATE())  -- Only current year
-            GROUP BY Room, RoomName, month_num, month_name
-        )
-        -- Final pivot table
+            FROM reservation_dates rd
+            WHERE MONTH(rd.CheckIn) <> MONTH(rd.CheckOut - INTERVAL 1 DAY)
+                ),
+                monthly_revenue AS (
+                    SELECT
+                        Room,
+                        RoomName,
+                        month_num,
+                        month_name,
+                        ROUND(SUM(month_revenue)) AS monthly_revenue
+                    FROM monthly_stays
+                    WHERE year = YEAR(CURDATE())  -- Only current year
+                    GROUP BY Room, RoomName, month_num, month_name
+                )
+                     
+                SELECT 
+                    Room, RoomName,
+                    SUM(CASE WHEN month_num = 1 THEN monthly_revenue ELSE 0 END) AS Jan,
+                    SUM(CASE WHEN month_num = 2 THEN monthly_revenue ELSE 0 END) AS Feb,
+                    SUM(CASE WHEN month_num = 3 THEN monthly_revenue ELSE 0 END) AS Mar,
+                    SUM(CASE WHEN month_num = 4 THEN monthly_revenue ELSE 0 END) AS Apr,
+                    SUM(CASE WHEN month_num = 5 THEN monthly_revenue ELSE 0 END) AS May,
+                    SUM(CASE WHEN month_num = 6 THEN monthly_revenue ELSE 0 END) AS Jun,
+                    SUM(CASE WHEN month_num = 7 THEN monthly_revenue ELSE 0 END) AS Jul,
+                    SUM(CASE WHEN month_num = 8 THEN monthly_revenue ELSE 0 END) AS Aug,
+                    SUM(CASE WHEN month_num = 9 THEN monthly_revenue ELSE 0 END) AS Sep,
+                    SUM(CASE WHEN month_num = 10 THEN monthly_revenue ELSE 0 END) AS Oct,
+                    SUM(CASE WHEN month_num = 11 THEN monthly_revenue ELSE 0 END) AS Nov,
+                    SUM(CASE WHEN month_num = 12 THEN monthly_revenue ELSE 0 END) AS `Dec`,
+                    SUM(monthly_revenue) AS Total
+                FROM monthly_revenue 
+                GROUP BY Room, RoomName
+                            
+            UNION ALL 
+
         SELECT 
-            month_name,
+            'TOTAL' AS Room, 
+            'TOTAL' AS RoomName,  
             SUM(CASE WHEN month_num = 1 THEN monthly_revenue ELSE 0 END) AS Jan,
             SUM(CASE WHEN month_num = 2 THEN monthly_revenue ELSE 0 END) AS Feb,
             SUM(CASE WHEN month_num = 3 THEN monthly_revenue ELSE 0 END) AS Mar,
@@ -606,12 +628,13 @@ monthly_stays AS (
             SUM(CASE WHEN month_num = 9 THEN monthly_revenue ELSE 0 END) AS Sep,
             SUM(CASE WHEN month_num = 10 THEN monthly_revenue ELSE 0 END) AS Oct,
             SUM(CASE WHEN month_num = 11 THEN monthly_revenue ELSE 0 END) AS Nov,
-            SUM(CASE WHEN month_num = 12 THEN monthly_revenue ELSE 0 END) AS 'Dec',
+            SUM(CASE WHEN month_num = 12 THEN monthly_revenue ELSE 0 END) AS `Dec`,
             SUM(monthly_revenue) AS Total
         FROM monthly_revenue
         GROUP BY month_name, month_num
         ORDER BY month_num
             """)
+    
     result = cursor.fetchall()
     formatted_result = []
     for row in result:
@@ -626,6 +649,16 @@ monthly_stays AS (
         for col in row:
             if col != '$0.00':
                 print(col)
+
+    
+    df.columns = ["Room", "RoomName", "Jan", "Feb", "Mar", "Apr", 
+                  "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Total"]
+    if df.empty:
+        print("Error, please try again. ")
+    else:
+        print(df.to_string(index=False))  
+
+    return df
 
 def main():
     conn = connect_to_database()
