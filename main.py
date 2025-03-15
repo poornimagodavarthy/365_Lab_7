@@ -223,12 +223,17 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
 
     if not all_room_vals:
         suggested_rooms = suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupancy)
+        selected_room = present_suggestions(suggested_rooms)
+        roomcode, bedtype, begindate, enddate, rate = selected_room[0], selected_room[3], datetime.strptime(selected_room[9], "%Y-%m-%d"), datetime.strptime(selected_room[11], "%Y-%m-%d"), selected_room[7]
+            
+        '''
         if not suggested_rooms:
             print("Sorry, no rooms are availble for those dates, please select a different date.")
             return
         else:
             selected_room = present_suggestions(suggested_rooms)
             roomcode, bedtype, begindate, enddate, rate = selected_room[0], selected_room[3], datetime.strptime(selected_room[9], "%Y-%m-%d"), datetime.strptime(selected_room[11], "%Y-%m-%d"), selected_room[7]
+            '''
     else:
         rate = all_room_vals[0][5]
         total_price = compute_total_price(begindate, enddate, rate)
@@ -308,13 +313,10 @@ def suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupan
                     left join last180Days as l on l.Room = r.RoomCode
                     left join availableCheckInDays as a on a.Room = r.RoomCode
                     left join mostRecentStays as m on m.Room = r.RoomCode
-                WHERE nextAvailableCheckIn <= '{begindate}'
+                WHERE (a.nextAvailableCheckIn BETWEEN DATE_SUB('{begindate}', INTERVAL 50 DAY) AND DATE_ADD('{begindate}', INTERVAL 50 DAY)
+                    OR a.nextAvailableCheckIn BETWEEN DATE_SUB('{enddate}', INTERVAL 50 DAY) AND DATE_ADD('{enddate}', INTERVAL 50 DAY))
                 AND r.maxOcc >= {maxOccupancy}
-                AND NOT EXISTS (
-                    SELECT 1
-                    FROM lab7_reservations r2
-                    WHERE r2.CheckIn > '{begindate}' AND r2.CheckOut < '{enddate}'
-                )
+               
                 )
             SELECT * FROM ranked_rooms
             WHERE row_rank <=5
