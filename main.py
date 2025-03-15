@@ -9,9 +9,9 @@ import pandas as pd
 
 def connect_to_database():
     db_password = getpass.getpass("Enter the database password: ")
-    conn = mysql.connector.connect(user='pgodavar', password=db_password,
+    conn = mysql.connector.connect(user='aramchan', password=db_password,
                                 host='mysql.labthreesixfive.com',
-                                database='pgodavar')
+                                database='aramchan')
     return conn
 
 def get_rooms(conn):
@@ -68,7 +68,11 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
     cursor = conn.cursor()
     roomcode, bedtype, firstname = str(roomcode), str(bedtype), str(firstname)
     begindate = datetime.strptime(begindate, "%Y-%m-%d")
+    if begindate < datetime.today():
+        raise ValueError("Please enter a date that is either today or in the future, try again")
     enddate = datetime.strptime(enddate, "%Y-%m-%d")
+    if enddate < begindate:
+        raise ValueError("Please enter a valid end date.")
     num_children = int(num_children)
     num_adults = int(num_adults) 
     maxOccupancy = num_children + num_adults
@@ -445,7 +449,6 @@ def is_valid_date(date):
 
 def show_revenue(conn):
     warnings.filterwarnings("ignore")
-    cursor = conn.cursor()
     df = pd.read_sql(""" 
         WITH months as (
             SELECT 1 as month_num, 'January' as month_name UNION ALL
@@ -624,25 +627,9 @@ def show_revenue(conn):
             SUM(CASE WHEN month_num = 12 THEN monthly_revenue ELSE 0 END) AS `Dec`,
             SUM(monthly_revenue) AS Total
         FROM monthly_revenue
-        GROUP BY month_name, month_num
-        ORDER BY month_num
-            """)
-    
-    result = cursor.fetchall()
-    formatted_result = []
-    for row in result:
-        formatted_row = list(row) 
-        for i in range(1, len(formatted_row)):  
-            if isinstance(formatted_row[i], Decimal):
-                formatted_row[i] = "${:,.2f}".format(formatted_row[i])
-        
-        formatted_result.append(tuple(formatted_row))  
 
-    for row in formatted_result:
-        for col in row:
-            if col != '$0.00':
-                print(col)
-
+        ORDER BY Room;
+                    """, conn)
     
     df.columns = ["Room", "RoomName", "Jan", "Feb", "Mar", "Apr", 
                   "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec", "Total"]
