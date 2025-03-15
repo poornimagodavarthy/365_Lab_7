@@ -445,7 +445,6 @@ def is_valid_date(date):
 
 def show_revenue(conn):
     warnings.filterwarnings("ignore")
-    cursor = conn.cursor()
     df = pd.read_sql(""" 
         WITH months as (
             SELECT 1 as month_num, 'January' as month_name UNION ALL
@@ -624,24 +623,10 @@ def show_revenue(conn):
             SUM(CASE WHEN month_num = 12 THEN monthly_revenue ELSE 0 END) AS `Dec`,
             SUM(monthly_revenue) AS Total
         FROM monthly_revenue
-        GROUP BY month_name, month_num
-        ORDER BY month_num
-            """)
-    
-    result = cursor.fetchall()
-    formatted_result = []
-    for row in result:
-        formatted_row = list(row) 
-        for i in range(1, len(formatted_row)):  
-            if isinstance(formatted_row[i], Decimal):
-                formatted_row[i] = "${:,.2f}".format(formatted_row[i])
         
-        formatted_result.append(tuple(formatted_row))  
-
-    for row in formatted_result:
-        for col in row:
-            if col != '$0.00':
-                print(col)
+        ORDER BY Room
+            """, conn)
+    
 
     
     df.columns = ["Room", "RoomName", "Jan", "Feb", "Mar", "Apr", 
@@ -652,7 +637,7 @@ def show_revenue(conn):
         print(df.to_string(index=False))  
 
     return df
-
+    
 def main():
     conn = connect_to_database()
     if conn is None:
