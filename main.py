@@ -110,7 +110,7 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
                     where r2.Room = r1.Room and r2.CheckOut < CURDATE() 
                  )
              )
-         select DISTINCT RoomCode, RoomName, Beds, bedType, maxOcc, basePrice, decor, 
+         select RoomCode, RoomName, Beds, bedType, maxOcc, basePrice, decor, 
                 (r.basePrice * (DATEDIFF('{enddate}','{begindate}'))) AS TotalPrice,
                  COALESCE(ROUND(l.occupiedDays/180, 2), 0) as popularity, 
                  COALESCE(a.nextAvailableCheckIn, 'No future bookings') AS nextAvailableCheckIn, 
@@ -157,7 +157,7 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
                     where r2.Room = r1.Room and r2.CheckOut < CURDATE() 
                  )
              )
-         select DISTINCT RoomCode, RoomName, Beds, bedType, maxOcc, basePrice, decor, 
+         select RoomCode, RoomName, Beds, bedType, maxOcc, basePrice, decor, 
                 (r.basePrice * (DATEDIFF('{enddate}','{begindate}'))) AS TotalPrice,
                  COALESCE(ROUND(l.occupiedDays/180, 2), 0) as popularity, 
                  COALESCE(a.nextAvailableCheckIn, 'No future bookings') AS nextAvailableCheckIn, 
@@ -206,7 +206,7 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
                     where r2.Room = r1.Room and r2.CheckOut < CURDATE() 
                  )
              )
-         select DISTINCT RoomCode, RoomName, Beds, bedType, maxOcc, basePrice, decor, 
+         select RoomCode, RoomName, Beds, bedType, maxOcc, basePrice, decor, 
                 (r.basePrice * (DATEDIFF('{enddate}','{begindate}'))) AS TotalPrice,
                  COALESCE(ROUND(l.occupiedDays/180, 2), 0) as popularity, 
                  COALESCE(a.nextAvailableCheckIn, 'No future bookings') AS nextAvailableCheckIn, 
@@ -254,7 +254,7 @@ def make_reservation(conn, firstname, lastname, roomcode, bedtype, begindate, en
                 cursor.execute(insert)
                 conn.commit()
                 confirmation_query = """
-                SELECT DISTINCT CODE, Room, CheckIn, CheckOut, Rate, LastName, FirstName, Adults, Kids, RoomName
+                SELECT CODE, Room, CheckIn, CheckOut, Rate, LastName, FirstName, Adults, Kids, RoomName
                 FROM lab7_reservations 
                 JOIN lab7_rooms ON Room = RoomCode
                 WHERE CODE = %s
@@ -289,20 +289,20 @@ def suggest_alternatives(conn, roomcode, bedtype, begindate, enddate, maxOccupan
     cursor = conn.cursor()
     query = f"""
     with last180Days as (
-             select DISTINCT Room, 
+             select Room, 
                     SUM(DATEDIFF(LEAST(CheckOut, CURDATE()), GREATEST(CheckIn, DATE_SUB(CURDATE(), INTERVAL 180 DAY)))) AS occupiedDays
              from lab7_reservations
              where LEAST(CheckOut, CURDATE()) > GREATEST(CheckIn, DATE_SUB(CURDATE(), INTERVAL 180 DAY))
              group by Room
              ),
          availableCheckInDays as (
-             select DISTINCT Room, MIN(CheckOut) as nextAvailableCheckIn
+             select Room, MIN(CheckOut) as nextAvailableCheckIn
              from lab7_reservations
              where CheckOut >= CURDATE()
              group by Room
              ),
          mostRecentStays as (
-             select DISTINCT r1.Room, r1.CheckOut as mostRecent, DATEDIFF(r1.CheckOut, r1.CheckIn) as lengthOfStay
+             select r1.Room, r1.CheckOut as mostRecent, DATEDIFF(r1.CheckOut, r1.CheckIn) as lengthOfStay
              from lab7_reservations as r1
              where r1.CheckOut = (
                  select MAX(r2.CheckOut)
