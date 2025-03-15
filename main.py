@@ -469,13 +469,11 @@ def show_revenue(conn):
                 res.CheckIn,
                 res.CheckOut,
                 DATEDIFF(res.CheckOut, res.CheckIn) AS nights,
-                -- Calculate weekday nights in the reservation
                 (
                     SELECT COUNT(*)
                     FROM (
                         SELECT ADDDATE(res.CheckIn, n) AS date
                         FROM (
-                            -- Generate sequence of numbers from 0 to 999 (adjust as needed)
                             SELECT a.i + b.i*10 + c.i*100 AS n
                             FROM 
                                 (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) a,
@@ -486,27 +484,22 @@ def show_revenue(conn):
                         AND WEEKDAY(ADDDATE(res.CheckIn, n)) NOT IN (5, 6)
                     ) weekday_dates
                 ) AS weekday_nights,
-                -- Weekday rate
                 r.BasePrice AS weekday_rate,
                 r.BasePrice * 1.10 AS weekend_rate
             FROM lab7_reservations res
             JOIN lab7_rooms r ON res.Room = r.RoomCode
         ),
         monthly_stays AS (
-            -- Step 2: Split reservations by month
             SELECT
                 rd.Room,
                 rd.RoomName,
                 YEAR(rd.CheckIn) AS year,
                 MONTH(rd.CheckIn) AS month_num,
                 MONTHNAME(rd.CheckIn) AS month_name,
-                -- Handle stays within a single month
                 CASE
                     WHEN MONTH(rd.CheckIn) = MONTH(rd.CheckOut - INTERVAL 1 DAY) THEN
-                        -- Calculate full stay price
                         (rd.nights - rd.weekday_nights) * rd.weekend_rate + rd.weekday_nights * rd.weekday_rate
                     ELSE
-                        -- Calculate partial stay price (for check-in month)
                         (DATEDIFF(LAST_DAY(rd.CheckIn) + INTERVAL 1 DAY, rd.CheckIn) - 
                             (
                                 SELECT COUNT(*)
